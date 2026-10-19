@@ -1,5 +1,4 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { expect, test } from '@jest/globals';
 import { handleMessage, resetSessions } from '../src/handlers/messageHandler.js';
 import { clearTasks, getTask, getTasks } from '../src/utils/taskStore.js';
 
@@ -22,10 +21,10 @@ test('Пошаговое создание задачи работает, а се
   await send(2, '2099-10-21 08:00');
   await send(1, 'daily');
   await send(2, 'none');
-  assert.equal(getTasks(1)[0].title, 'Read book');
-  assert.equal(getTasks(1)[0].repeat, 'daily');
-  assert.equal(getTasks(2)[0].title, 'Walk');
-  assert.ok(sent.some((item) => item.text.includes('Задача создана')));
+  expect(getTasks(1)[0].title).toBe('Read book');
+  expect(getTasks(1)[0].repeat).toBe('daily');
+  expect(getTasks(2)[0].title).toBe('Walk');
+  expect(sent.some((item) => item.text.includes('Задача создана'))).toBeTruthy();
 });
 
 test('Некорректная дата отклоняется без сбоя и потери состояния диалога', async () => {
@@ -33,8 +32,8 @@ test('Некорректная дата отклоняется без сбоя �
   await send(1, '/add_task');
   await send(1, 'Study');
   await send(1, 'not a date');
-  assert.equal(getTasks(1).length, 0);
-  assert.ok(sent.at(-1).text.includes('Дата некорректна'));
+  expect(getTasks(1).length).toBe(0);
+  expect(sent.at(-1).text.includes('Дата некорректна')).toBeTruthy();
 });
 
 test('Список напоминаний показывает повторение, а команда /done отмечает задачу выполненной', async () => {
@@ -45,11 +44,11 @@ test('Список напоминаний показывает повторен�
   await send(1, 'none');
   const taskId = getTasks(1)[0].id;
   await send(1, '/reminders');
-  assert.ok(sent.at(-1).text.includes('Повтор: без повтора'));
+  expect(sent.at(-1).text.includes('Повтор: без повтора')).toBeTruthy();
   await send(1, `/done ${taskId}`);
-  assert.equal(getTask(1, taskId).completed, true);
+  expect(getTask(1, taskId).completed).toBe(true);
   await send(1, '/reminders');
-  assert.ok(sent.at(-1).text.includes('выполнена'));
+  expect(sent.at(-1).text.includes('выполнена')).toBeTruthy();
 });
 
 test('Поддерживаются изменение повторения, отключение напоминания и изменение даты', async () => {
@@ -60,13 +59,13 @@ test('Поддерживаются изменение повторения, от
   await send(1, 'none');
   const id = getTasks(1)[0].id;
   await send(1, `/reminder_repeat ${id} weekly`);
-  assert.equal(getTask(1, id).repeat, 'weekly');
+  expect(getTask(1, id).repeat).toBe('weekly');
   await send(1, `/reminder_toggle ${id}`);
-  assert.equal(getTask(1, id).reminderEnabled, false);
+  expect(getTask(1, id).reminderEnabled).toBe(false);
   await send(1, `/reminder_edit ${id}`);
   await send(1, '2099-10-22 10:00');
-  assert.equal(getTask(1, id).reminderAt.getDate(), 22);
-  assert.ok(sent.some((item) => item.text.includes('еженедельно')));
+  expect(getTask(1, id).reminderAt.getDate()).toBe(22);
+  expect(sent.some((item) => item.text.includes('еженедельно'))).toBeTruthy();
 });
 
 test('Неизвестная задача и некорректная команда обрабатываются безопасно', async () => {
@@ -74,7 +73,7 @@ test('Неизвестная задача и некорректная коман
   await send(1, '/done 100');
   await handleMessage({ sendMessage: async (chatId, text) => sent.push({ chatId, text }) }, { from: { id: 1 }, chat: { id: 101 }, text: '/reminder_repeat 100 monthly' });
   await handleMessage({ sendMessage: async () => {} }, { from: { id: 1 }, chat: { id: 101 }, text: '/today' });
-  assert.ok(sent.some((item) => item.text.includes('не найдена')));
+  expect(sent.some((item) => item.text.includes('не найдена'))).toBeTruthy();
 });
 
 
@@ -86,10 +85,10 @@ test('Команда /delete удаляет задачу и обрабатыва
   await send(1, 'none');
   const id = getTasks(1)[0].id;
   await send(1, `/delete ${id}`);
-  assert.equal(getTask(1, id), null);
-  assert.ok(sent.at(-1).text.includes('удалена'));
+  expect(getTask(1, id)).toBe(null);
+  expect(sent.at(-1).text.includes('удалена')).toBeTruthy();
   await send(1, '/delete 999');
-  assert.ok(sent.at(-1).text.includes('не найдена'));
+  expect(sent.at(-1).text.includes('не найдена')).toBeTruthy();
 });
 
 test('Задачи удаляются с помощью кнопки в списке напоминаний', async () => {
@@ -101,5 +100,5 @@ test('Задачи удаляются с помощью кнопки в спис
   const id = getTasks(1)[0].id;
   await send(1, '/reminders');
   await send(1, `Удалить #${id}`);
-  assert.equal(getTask(1, id), null);
+  expect(getTask(1, id)).toBe(null);
 });

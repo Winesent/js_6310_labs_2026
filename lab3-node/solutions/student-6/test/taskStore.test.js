@@ -1,65 +1,140 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { addTask, clearTasks, completeTask, deleteTask, getNextReminder, getTask, getTasks, updateTask } from '../src/utils/taskStore.js';
 
-test.beforeEach(() => clearTasks());
+import { beforeEach, expect, test } from '@jest/globals';
+import {
+  addTask,
+  clearTasks,
+  completeTask,
+  deleteTask,
+  getNextReminder,
+  getTask,
+  getTasks,
+  updateTask,
+} from '../src/utils/taskStore.js';
 
-const future = () => new Date(Date.now() + 60_000);
-
-test('Задачи сохраняются отдельно для каждого пользователя', () => {
-  const task = addTask(1, { title: 'Read', reminderAt: future() });
-  addTask(2, { title: 'Walk', reminderAt: future() });
-  assert.equal(getTasks(1).length, 1);
-  assert.equal(getTasks(2).length, 1);
-  assert.equal(getTask(1, task.id).title, 'Read');
-  assert.equal(getTask(2, task.id), null);
+beforeEach(() => {
+  clearTasks();
 });
 
-test('Поля задачи проходят проверку корректности', () => {
-  assert.throws(() => addTask(1, { title: ' ', reminderAt: future() }), TypeError);
-  assert.throws(() => addTask(1, { title: 'x', reminderAt: 'tomorrow' }), TypeError);
-  assert.throws(() => addTask(1, { title: 'x', reminderAt: future(), repeat: 'monthly' }), TypeError);
+function futureDate(minutes = 1) {
+  return new Date(Date.now() + minutes * 60_000);
+}
+
+test('Задачи хранятся отдельно для каждого пользователя', () => {
+  const task = addTask(1, {
+    title: 'Прочитать книгу',
+    reminderAt: futureDate(),
+  });
+
+  addTask(2, {
+    title: 'Прогуляться',
+    reminderAt: futureDate(),
+  });
+
+  expect(getTasks(1)).toHaveLength(1);
+  expect(getTasks(2)).toHaveLength(1);
+  expect(getTask(1, task.id).title).toBe('Прочитать книгу');
+  expect(getTask(2, task.id)).toBeNull();
 });
 
-test('Обновляются напоминание, повторение, активность и название задачи', () => {
-  const task = addTask(1, { title: 'Old', reminderAt: future() });
-  const updated = updateTask(1, task.id, { title: 'New', repeat: 'daily', reminderEnabled: false });
-  assert.equal(updated.title, 'New');
-  assert.equal(updated.repeat, 'daily');
-  assert.equal(updated.reminderEnabled, false);
-  assert.equal(updateTask(1, 999, { repeat: 'none' }), null);
-  assert.throws(() => updateTask(1, task.id, { repeat: 'monthly' }), TypeError);
+test('Некорректные данные задачи отклоняются', () => {
+  expect(() => addTask(1, {
+    title: ' ',
+    reminderAt: futureDate(),
+  })).toThrow(TypeError);
+
+  expect(() => addTask(1, {
+    title: 'Задача',
+    reminderAt: 'завтра',
+  })).toThrow(TypeError);
+
+  expect(() => addTask(1, {
+    title: 'Задача',
+    reminderAt: futureDate(),
+    repeat: 'monthly',
+  })).toThrow(TypeError);
 });
 
-test('Одноразовая задача отмечается выполненной, а её статус сохраняется', () => {
-  const task = addTask(1, { title: 'Once', reminderAt: future() });
-  assert.equal(completeTask(1, task.id).status, 'completed');
-  assert.equal(getTask(1, task.id).completed, true);
-  assert.equal(completeTask(1, 999).status, 'not_found');
+test('Изменяются название, повтор и активность напоминания', () => {
+  const task = addTask(1, {
+    title: 'Старое название',
+    reminderAt: futureDate(),
+  });
+
+  const updated = updateTask(1, task.id, {
+    title: 'Новое название',
+    repeat: 'daily',
+    reminderEnabled: false,
+  });
+
+  expect(updated.title).toBe('Новое название');
+  expect(updated.repeat).toBe('daily');
+  expect(updated.reminderEnabled).toBe(false);
+
+  expect(updateTask(1, 999, { repeat: 'none' })).toBeNull();
+
+  expect(() => updateTask(1, task.id, {
+    repeat: 'monthly',
+  })).toThrow(TypeError);
 });
 
-test('При выполнении повторяющейся задачи назначается следующее напоминание', () => {
-  const task = addTask(1, { title: 'Daily', reminderAt: new Date(Date.now() - 86_400_000), repeat: 'daily' });
+test('Одноразовая задача отмечается выполненной', () => {
+  const task = addTask(1, {
+    title: 'Выполнить задание',
+    reminderAt: futureDate(),
+  });
+
+  expect(completeTask(1, task.id).status).toBe('completed');
+  expect(getTask(1, task.id).completed).toBe(true);
+  expect(completeTask(1, 999).status).toBe('not_found');
+});
+
+test('Повторяющаяся задача получает следующее напоминание', () => {
+  const task = addTask(1, {
+    title: 'Ежедневная задача',
+    reminderAt: new Date(Date.now() - 86_400_000),
+    repeat: 'daily',
+  });
+
   const result = completeTask(1, task.id);
-  assert.equal(result.status, 'rescheduled');
-  assert.ok(result.task.reminderAt > new Date());
-  assert.equal(result.task.completed, false);
+
+  expect(result.status).toBe('rescheduled');
+  expect(result.task.reminderAt.getTime()).toBeGreaterThan(Date.now());
+  expect(result.task.completed).toBe(false);
 });
 
-test('Возвращается ближайшее активное напоминание в будущем', () => {
-  const later = addTask(1, { title: 'Later', reminderAt: new Date(Date.now() + 120_000) });
-  const earlier = addTask(1, { title: 'Earlier', reminderAt: future() });
-  assert.equal(getNextReminder(1).id, earlier.id);
-  updateTask(1, earlier.id, { reminderEnabled: false });
-  assert.equal(getNextReminder(1).id, later.id);
+test('Находится ближайшее активное напоминание', () => {
+  const later = addTask(1, {
+    title: 'Позднее напоминание',
+    reminderAt: futureDate(2),
+  });
+
+  const earlier = addTask(1, {
+    title: 'Раннее напоминание',
+    reminderAt: futureDate(1),
+  });
+
+  expect(getNextReminder(1).id).toBe(earlier.id);
+
+  updateTask(1, earlier.id, {
+    reminderEnabled: false,
+  });
+
+  expect(getNextReminder(1).id).toBe(later.id);
 });
 
+test('Удаляется только задача указанного пользователя', () => {
+  const task = addTask(1, {
+    title: 'Удалить',
+    reminderAt: futureDate(),
+  });
 
-test('Удаляется только задача выбранного пользователя, а для отсутствующей задачи возвращается null', () => {
-  const task = addTask(1, { title: 'Remove me', reminderAt: future() });
-  addTask(2, { title: 'Keep me', reminderAt: future() });
-  assert.equal(deleteTask(1, task.id).title, 'Remove me');
-  assert.equal(getTask(1, task.id), null);
-  assert.equal(getTasks(2).length, 1);
-  assert.equal(deleteTask(1, task.id), null);
+  addTask(2, {
+    title: 'Оставить',
+    reminderAt: futureDate(),
+  });
+
+  expect(deleteTask(1, task.id).title).toBe('Удалить');
+  expect(getTask(1, task.id)).toBeNull();
+  expect(getTasks(2)).toHaveLength(1);
+  expect(deleteTask(1, task.id)).toBeNull();
 });
